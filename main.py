@@ -209,36 +209,107 @@ class LinkOpenerApp(QMainWindow):
         
         # Layout horizontal untuk tombol-tombol di bawah DND
         buttons_layout = QHBoxLayout()
-        
-        # Tombol buka file
+          # Tombol buka file
         self.open_button = QPushButton("Pilih TXT")
-        self.open_button.setIcon(qta.icon('fa5s.folder-open'))
+        self.open_button.setIcon(qta.icon('fa5s.folder-open', color='#2196F3'))
         self.open_button.setMinimumHeight(50)
         self.open_button.setFont(QFont("Arial", 12))
+        self.open_button.setStyleSheet("""
+            QPushButton {
+                border: 2px solid #2196F3;
+                border-radius: 8px;
+                padding: 8px 16px;
+                background-color: transparent;
+            }
+            QPushButton:hover {
+                border: 2px solid #1976D2;
+                background-color: rgba(33, 150, 243, 0.05);
+            }
+            QPushButton:pressed {
+                border: 2px solid #0D47A1;
+                background-color: rgba(33, 150, 243, 0.1);
+            }
+        """)
         self.open_button.clicked.connect(self.open_file)
         buttons_layout.addWidget(self.open_button)
           # Tombol buka link
         self.open_links_button = QPushButton("Buka Chrome")
-        self.open_links_button.setIcon(qta.icon('fa5s.rocket'))
+        self.open_links_button.setIcon(qta.icon('fa5s.rocket', color='#4CAF50'))
         self.open_links_button.setMinimumHeight(50)
         self.open_links_button.setFont(QFont("Arial", 12))
+        self.open_links_button.setStyleSheet("""
+            QPushButton {
+                border: 2px solid #4CAF50;
+                border-radius: 8px;
+                padding: 8px 16px;
+                background-color: transparent;
+            }
+            QPushButton:hover {
+                border: 2px solid #388E3C;
+                background-color: rgba(76, 175, 80, 0.05);
+            }
+            QPushButton:pressed {
+                border: 2px solid #2E7D32;
+                background-color: rgba(76, 175, 80, 0.1);
+            }
+            QPushButton:disabled {
+                border: 2px solid #CCCCCC;
+                color: #999999;
+            }
+        """)
         self.open_links_button.setVisible(False)
         self.open_links_button.clicked.connect(self.open_links)
         buttons_layout.addWidget(self.open_links_button)
           # Tombol export links
         self.export_button = QPushButton("Export Links")
-        self.export_button.setIcon(qta.icon('fa5s.file-export'))
+        self.export_button.setIcon(qta.icon('fa5s.file-export', color='#FF9800'))
         self.export_button.setMinimumHeight(50)
         self.export_button.setFont(QFont("Arial", 12))
+        self.export_button.setStyleSheet("""
+            QPushButton {
+                border: 2px solid #FF9800;
+                border-radius: 8px;
+                padding: 8px 16px;
+                background-color: transparent;
+            }
+            QPushButton:hover {
+                border: 2px solid #F57C00;
+                background-color: rgba(255, 152, 0, 0.05);
+            }
+            QPushButton:pressed {
+                border: 2px solid #E65100;
+                background-color: rgba(255, 152, 0, 0.1);
+            }
+        """)
         self.export_button.setVisible(False)
         self.export_button.clicked.connect(self.export_links)
         buttons_layout.addWidget(self.export_button)
         
         # Tombol tutup tab
         self.close_tabs_button = QPushButton("Tutup Tab")
-        self.close_tabs_button.setIcon(qta.icon('fa5s.times-circle'))
+        self.close_tabs_button.setIcon(qta.icon('fa5s.times-circle', color='#F44336'))
         self.close_tabs_button.setMinimumHeight(50)
         self.close_tabs_button.setFont(QFont("Arial", 12))
+        self.close_tabs_button.setStyleSheet("""
+            QPushButton {
+                border: 2px solid #F44336;
+                border-radius: 8px;
+                padding: 8px 16px;
+                background-color: transparent;
+            }
+            QPushButton:hover {
+                border: 2px solid #D32F2F;
+                background-color: rgba(244, 67, 54, 0.05);
+            }
+            QPushButton:pressed {
+                border: 2px solid #B71C1C;
+                background-color: rgba(244, 67, 54, 0.1);
+            }
+            QPushButton:disabled {
+                border: 2px solid #CCCCCC;
+                color: #999999;
+            }
+        """)
         self.close_tabs_button.setVisible(False)
         self.close_tabs_button.clicked.connect(self.close_chrome_tabs)
         buttons_layout.addWidget(self.close_tabs_button)
