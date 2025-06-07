@@ -197,7 +197,7 @@ class LinkOpenerApp(QMainWindow):
         # Enable drag and drop
         self.setAcceptDrops(True)    
     def init_ui(self):
-        self.setWindowTitle("Link Opener - Buka Link dari File TXT")
+        self.setWindowTitle("Link Opener - Buka & Ekstrak Link dari File")
         self.setGeometry(100, 100, 600, 600)
         
         # Set aplikasi icon
