@@ -6,13 +6,46 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout,
                                QHBoxLayout, QWidget, QPushButton, 
                                QProgressBar, QLabel, QFileDialog, 
                                QMessageBox, QTextEdit, QFrame, QTableWidget, 
-                               QTableWidgetItem, QHeaderView)
+                               QTableWidgetItem, QHeaderView, QMenu)
 from PySide6.QtCore import QThread, Signal, Qt, QUrl, QMimeData
-from PySide6.QtGui import QFont, QDragEnterEvent, QDropEvent, QIcon, QColor
+from PySide6.QtGui import QFont, QDragEnterEvent, QDropEvent, QIcon, QColor, QAction, QClipboard
 import qtawesome as qta
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
+
+# Libraries untuk membaca berbagai format file
+try:
+    from docx import Document  # untuk .docx
+except ImportError:
+    Document = None
+
+try:
+    import openpyxl  # untuk .xlsx
+except ImportError:
+    openpyxl = None
+
+try:
+    from pptx import Presentation  # untuk .pptx
+except ImportError:
+    Presentation = None
+
+try:
+    import PyPDF2  # untuk .pdf
+except ImportError:
+    PyPDF2 = None
+
+try:
+    import xlrd  # untuk .xls
+except ImportError:
+    xlrd = None
+
+try:
+    import olefile  # untuk .doc dan .ppt
+    import struct
+except ImportError:
+    olefile = None
+    struct = None
 
 
 class LinkOpenerWorker(QThread):
@@ -183,9 +216,11 @@ class LinkOpenerApp(QMainWindow):
         
         layout.addLayout(header_layout)
           # Deskripsi
-        desc = QLabel("Pilih file TXT yang berisi campuran teks dan link.\n"
-                     "Aplikasi akan otomatis membuka semua link (http/https) di Chrome incognito.\n"
-                     "Kamu juga bisa drag & drop file TXT ke area ini.")
+        desc = QLabel("Pilih file yang berisi campuran teks dan link.\n"
+                     "Mendukung format: TXT, DOC, DOCX, XLS, XLSX, PPT, PPTX, PDF\n"
+                     "Aplikasi akan menampilkan semua link yang ditemukan dalam tabel.\n"
+                     "Klik 'Buka Chrome' untuk membuka semua link, atau double-click link untuk buka satu per satu.\n"
+                     "Kamu juga bisa drag & drop file ke area ini.")
         desc.setAlignment(Qt.AlignCenter)
         desc.setWordWrap(True)
         layout.addWidget(desc)
@@ -201,7 +236,7 @@ class LinkOpenerApp(QMainWindow):
         """)
         self.drop_frame.setObjectName("dropFrame")
         drop_layout = QVBoxLayout(self.drop_frame)
-        drop_label = QLabel("Drag & Drop file TXT di sini\natau klik tombol di bawah")
+        drop_label = QLabel("Drag & Drop file di sini\natau klik tombol di bawah")
         drop_label.setAlignment(Qt.AlignCenter)
         drop_label.setFont(QFont("Arial", 10))
         drop_layout.addWidget(drop_label)
@@ -210,7 +245,7 @@ class LinkOpenerApp(QMainWindow):
         # Layout horizontal untuk tombol-tombol di bawah DND
         buttons_layout = QHBoxLayout()
           # Tombol buka file
-        self.open_button = QPushButton("Pilih TXT")
+        self.open_button = QPushButton("Pilih File")
         self.open_button.setIcon(qta.icon('fa5s.folder-open', color='#2196F3'))
         self.open_button.setMinimumHeight(50)
         self.open_button.setFont(QFont("Arial", 12))
@@ -331,6 +366,10 @@ class LinkOpenerApp(QMainWindow):
         # Connect double-click event untuk buka link individual
         self.links_table.itemDoubleClicked.connect(self.open_single_link)
         
+        # Enable context menu untuk table
+        self.links_table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.links_table.customContextMenuRequested.connect(self.show_context_menu)
+        
         # Set column widths
         header = self.links_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.Stretch)  # Link column stretches
@@ -351,15 +390,20 @@ class LinkOpenerApp(QMainWindow):
         """Handle drag enter event"""
         if event.mimeData().hasUrls():
             urls = event.mimeData().urls()
-            if len(urls) == 1 and urls[0].toLocalFile().lower().endswith('.txt'):
-                # Set hover style when dragging valid file - only border color change
-                self.drop_frame.setStyleSheet("""
-                    QFrame#dropFrame {
-                        border: 2px dashed #4CAF50;
-                        border-radius: 10px;
-                    }
-                """)
-                event.acceptProposedAction()
+            if len(urls) == 1:
+                file_path = urls[0].toLocalFile().lower()
+                supported_extensions = ['.txt', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.pdf']
+                if any(file_path.endswith(ext) for ext in supported_extensions):
+                    # Set hover style when dragging valid file - only border color change
+                    self.drop_frame.setStyleSheet("""
+                        QFrame#dropFrame {
+                            border: 2px dashed #4CAF50;
+                            border-radius: 10px;
+                        }
+                    """)
+                    event.acceptProposedAction()
+                else:
+                    event.ignore()
             else:
                 event.ignore()
         else:
@@ -389,53 +433,288 @@ class LinkOpenerApp(QMainWindow):
             urls = event.mimeData().urls()
             if len(urls) == 1:
                 file_path = urls[0].toLocalFile()
-                if file_path.lower().endswith('.txt'):
+                file_path_lower = file_path.lower()
+                supported_extensions = ['.txt', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.pdf']
+                if any(file_path_lower.endswith(ext) for ext in supported_extensions):
                     self.load_and_extract_links(file_path)
                     event.acceptProposedAction()                
                 else:
-                    QMessageBox.warning(self, "Peringatan", "Hanya file .txt yang didukung!")
+                    QMessageBox.warning(self, "Peringatan", "Format file tidak didukung!\nHanya mendukung: TXT, DOC, DOCX, XLS, XLSX, PPT, PPTX, PDF")
             else:
                 QMessageBox.warning(self, "Peringatan", "Hanya bisa drop satu file!")
         else:
             event.ignore()
     
     def open_file(self):
-        """Buka dialog untuk memilih file TXT"""
+        """Buka dialog untuk memilih file"""
         file_path, _ = QFileDialog.getOpenFileName(
             self, 
-            "Pilih File TXT", 
+            "Pilih File", 
             "", 
-            "Text Files (*.txt);;All Files (*)"        )
+            "All Supported (*.txt *.doc *.docx *.xls *.xlsx *.ppt *.pptx *.pdf);;"
+            "Text Files (*.txt);;"
+            "Word Documents (*.doc *.docx);;"
+            "Excel Files (*.xls *.xlsx);;"
+            "PowerPoint Files (*.ppt *.pptx);;"
+            "PDF Files (*.pdf);;"
+            "All Files (*)"
+        )
         
         if file_path:
             self.load_and_extract_links(file_path)
     
+    def extract_text_from_file(self, file_path):
+        """Ekstrak teks dari berbagai format file"""
+        file_extension = Path(file_path).suffix.lower()
+        
+        try:
+            if file_extension == '.txt':
+                return self.extract_text_from_txt(file_path)
+            elif file_extension == '.docx':
+                return self.extract_text_from_docx(file_path)
+            elif file_extension == '.doc':
+                return self.extract_text_from_doc(file_path)
+            elif file_extension in ['.xlsx', '.xls']:
+                return self.extract_text_from_excel(file_path)
+            elif file_extension == '.pptx':
+                return self.extract_text_from_pptx(file_path)
+            elif file_extension == '.ppt':
+                return self.extract_text_from_ppt(file_path)
+            elif file_extension == '.pdf':
+                return self.extract_text_from_pdf(file_path)
+            else:
+                raise Exception(f"Format file {file_extension} tidak didukung")
+                
+        except Exception as e:
+            raise Exception(f"Gagal membaca file {file_extension}: {str(e)}")
+    
+    def extract_text_from_txt(self, file_path):
+        """Ekstrak teks dari file TXT"""
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
+            return file.read()
+    
+    def extract_text_from_docx(self, file_path):
+        """Ekstrak teks dari file DOCX termasuk hyperlink"""
+        if Document is None:
+            raise Exception("Library python-docx tidak terinstall. Install dengan: pip install python-docx")
+        
+        doc = Document(file_path)
+        text = []
+        links = []
+        
+        # Ekstrak teks normal dan hyperlink
+        for paragraph in doc.paragraphs:
+            text.append(paragraph.text)
+            
+            # Ekstrak hyperlink dari paragraph
+            for run in paragraph.runs:
+                if run.element.tag.endswith('hyperlink') or run._element.getparent().tag.endswith('hyperlink'):
+                    # Coba ambil URL dari hyperlink
+                    hyperlink_element = run._element.getparent()
+                    if hyperlink_element.tag.endswith('hyperlink'):
+                        rId = hyperlink_element.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
+                        if rId:
+                            try:
+                                relationship = doc.part.rels[rId]
+                                if relationship.target_ref.startswith('http'):
+                                    links.append(relationship.target_ref)
+                            except:
+                                pass
+        
+        # Gabungkan teks dan link yang ditemukan
+        all_text = '\n'.join(text)
+        if links:
+            all_text += '\n' + '\n'.join(links)
+        
+        return all_text
+    
+    def extract_text_from_doc(self, file_path):
+        """Ekstrak teks dari file DOC (format lama)"""
+        if olefile is None:
+            raise Exception("Library olefile tidak terinstall. Install dengan: pip install olefile")
+        
+        # Untuk file .doc, kita coba baca sebagai binary dan cari teks
+        try:
+            with open(file_path, 'rb') as file:
+                content = file.read()
+                # Decode dengan berbagai encoding
+                text = content.decode('utf-8', errors='ignore')
+                # Filter karakter yang tidak dapat dibaca
+                text = ''.join(char for char in text if ord(char) >= 32 or char in '\n\t')
+                return text
+        except Exception:
+            raise Exception("Gagal membaca file DOC. Coba convert ke DOCX dulu.")
+    
+    def extract_text_from_excel(self, file_path):
+        """Ekstrak teks dari file Excel (XLS/XLSX) termasuk hyperlink"""
+        file_extension = Path(file_path).suffix.lower()
+        text = []
+        
+        if file_extension == '.xlsx':
+            if openpyxl is None:
+                raise Exception("Library openpyxl tidak terinstall. Install dengan: pip install openpyxl")
+            
+            workbook = openpyxl.load_workbook(file_path, data_only=False)  # Keep formulas untuk hyperlink
+            for sheet_name in workbook.sheetnames:
+                sheet = workbook[sheet_name]
+                for row in sheet.iter_rows():
+                    for cell in row:
+                        # Tambahkan nilai cell
+                        if cell.value is not None:
+                            text.append(str(cell.value))
+                        
+                        # Cek hyperlink
+                        if cell.hyperlink is not None:
+                            if hasattr(cell.hyperlink, 'target') and cell.hyperlink.target:
+                                if cell.hyperlink.target.startswith('http'):
+                                    text.append(cell.hyperlink.target)
+            workbook.close()
+            
+        elif file_extension == '.xls':
+            if xlrd is None:
+                raise Exception("Library xlrd tidak terinstall. Install dengan: pip install xlrd")
+            
+            workbook = xlrd.open_workbook(file_path, formatting_info=True)
+            for sheet in workbook.sheets():
+                for row in range(sheet.nrows):
+                    for col in range(sheet.ncols):
+                        cell_value = sheet.cell_value(row, col)
+                        if cell_value:
+                            text.append(str(cell_value))
+                        
+                        # Coba ekstrak hyperlink dari XLS (lebih kompleks)
+                        try:
+                            cell_obj = sheet.cell(row, col)
+                            if hasattr(cell_obj, 'ctype') and cell_obj.ctype == xlrd.XL_CELL_TEXT:
+                                # Untuk XLS, hyperlink biasanya tersimpan sebagai text yang dimulai dengan http
+                                cell_text = str(cell_value)
+                                if cell_text.startswith('http'):
+                                    text.append(cell_text)
+                        except:
+                            pass
+        
+        return '\n'.join(text)
+    
+    def extract_text_from_pptx(self, file_path):
+        """Ekstrak teks dari file PPTX termasuk hyperlink"""
+        if Presentation is None:
+            raise Exception("Library python-pptx tidak terinstall. Install dengan: pip install python-pptx")
+        
+        prs = Presentation(file_path)
+        text = []
+        
+        for slide in prs.slides:
+            for shape in slide.shapes:
+                if hasattr(shape, "text") and shape.text:
+                    text.append(shape.text)
+                
+                # Cek hyperlink di shape
+                if hasattr(shape, "click_action") and shape.click_action.hyperlink:
+                    hyperlink = shape.click_action.hyperlink
+                    if hasattr(hyperlink, 'address') and hyperlink.address:
+                        if hyperlink.address.startswith('http'):
+                            text.append(hyperlink.address)
+                
+                # Cek hyperlink di text runs (untuk text yang ada hyperlink-nya)
+                if hasattr(shape, "text_frame"):
+                    for paragraph in shape.text_frame.paragraphs:
+                        for run in paragraph.runs:
+                            if hasattr(run, "hyperlink") and run.hyperlink:
+                                if hasattr(run.hyperlink, 'address') and run.hyperlink.address:
+                                    if run.hyperlink.address.startswith('http'):
+                                        text.append(run.hyperlink.address)
+        
+        return '\n'.join(text)
+    
+    def extract_text_from_pdf(self, file_path):
+        """Ekstrak teks dari file PDF termasuk link/annotation"""
+        if PyPDF2 is None:
+            raise Exception("Library PyPDF2 tidak terinstall. Install dengan: pip install PyPDF2")
+        
+        text = []
+        try:
+            with open(file_path, 'rb') as file:
+                pdf_reader = PyPDF2.PdfReader(file)
+                for page in pdf_reader.pages:
+                    # Ekstrak teks normal
+                    page_text = page.extract_text()
+                    if page_text:
+                        text.append(page_text)
+                    
+                    # Coba ekstrak link dari annotations
+                    if hasattr(page, 'annotations') and page.annotations:
+                        for annotation in page.annotations:
+                            if annotation.get_object():
+                                annotation_obj = annotation.get_object()
+                                if '/A' in annotation_obj:
+                                    action = annotation_obj['/A']
+                                    if '/URI' in action:
+                                        uri = action['/URI']
+                                        if isinstance(uri, str) and uri.startswith('http'):
+                                            text.append(uri)
+        except Exception as e:
+            raise Exception(f"Gagal membaca PDF: {str(e)}")
+        
+        return '\n'.join(text)
+    
     def load_and_extract_links(self, file_path):
-        """Load file dan ekstrak link"""
+        """Load file dan ekstrak link dengan metode yang diperbaiki"""
         try:
             # Store source file path for export functionality
             self.source_file_path = file_path
             
-            with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
-                content = file.read()
+            # Ekstrak teks berdasarkan format file
+            content = self.extract_text_from_file(file_path)
             
             # Ambil nama file tanpa path
             file_name = Path(file_path).name
             
-            # Regex untuk mencari link http/https
-            link_pattern = r'https?://[^\s<>"\']+[^\s<>"\'.,!?;:]'
-            links = re.findall(link_pattern, content)
+            # Regex yang diperbaiki untuk mencari link http/https
+            # Pattern yang lebih fleksibel untuk menangkap berbagai format link
+            link_patterns = [
+                r'https?://[^\s<>"\'`\[\]{}|\\^]+',  # Standard HTTP links
+                r'www\.[^\s<>"\'`\[\]{}|\\^]+\.[a-zA-Z]{2,}[^\s<>"\'`\[\]{}|\\^]*',  # www links
+                r'[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/[^\s<>"\'`\[\]{}|\\^]*',  # domain/path links
+            ]
+            
+            links = []
+            for pattern in link_patterns:
+                found_links = re.findall(pattern, content, re.IGNORECASE)
+                links.extend(found_links)
             
             # Bersihkan dan validasi link
             self.found_links = []
             for link in links:
                 # Hapus karakter yang tidak diinginkan di akhir
-                cleaned_link = re.sub(r'[.,!?;:)}\]]+$', '', link)
-                if cleaned_link and (cleaned_link.startswith('http://') or cleaned_link.startswith('https://')):
-                    self.found_links.append(cleaned_link)
+                cleaned_link = re.sub(r'[.,!?;:)}\]]+$', '', link.strip())
+                
+                # Pastikan link memiliki protocol
+                if cleaned_link:
+                    if not cleaned_link.startswith(('http://', 'https://')):
+                        if cleaned_link.startswith('www.'):
+                            cleaned_link = 'https://' + cleaned_link
+                        elif '.' in cleaned_link and not cleaned_link.startswith('mailto:'):
+                            # Cek apakah ini seperti domain
+                            domain_pattern = r'^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+                            if re.match(domain_pattern, cleaned_link):
+                                cleaned_link = 'https://' + cleaned_link
+                    
+                    # Validasi final
+                    if cleaned_link.startswith(('http://', 'https://')):
+                        # Pastikan domain valid
+                        try:
+                            from urllib.parse import urlparse
+                            parsed = urlparse(cleaned_link)
+                            if parsed.netloc and '.' in parsed.netloc:
+                                self.found_links.append(cleaned_link)
+                        except:
+                            # Jika parsing gagal, tetap tambahkan jika format basic benar
+                            if re.match(r'https?://[^.]+\..+', cleaned_link):
+                                self.found_links.append(cleaned_link)
             
             # Hapus duplikat
-            self.found_links = list(set(self.found_links))
+            self.found_links = list(dict.fromkeys(self.found_links))  # Preserves order
+            
             if self.found_links:
                 self.status_label.setText(f"Ditemukan {len(self.found_links)} link unik dari {file_name}:")
                   # Populate table dengan link
@@ -450,7 +729,6 @@ class LinkOpenerApp(QMainWindow):
                 self.export_button.setVisible(True)
                 self.close_tabs_button.setVisible(True)
                 # Disable tombol tutup tab karena belum ada tab yang terbuka
-                self.close_tabs_button.setEnabled(False)
                 self.close_tabs_button.setEnabled(False)
             else:
                 self.status_label.setText(f"Tidak ada link yang ditemukan dalam {file_name}.")                
@@ -696,6 +974,54 @@ class LinkOpenerApp(QMainWindow):
             print("DEBUG: Reset all table row styling to original default")
         except Exception as e:
             print(f"DEBUG: Error resetting table styling: {e}")
+    
+    def show_context_menu(self, position):
+        """Tampilkan context menu saat klik kanan pada tabel"""
+        item = self.links_table.itemAt(position)
+        if not item:
+            return
+        
+        # Buat context menu
+        context_menu = QMenu(self)
+        
+        # Action untuk copy link
+        copy_action = QAction("Copy Link", self)
+        copy_action.setIcon(qta.icon('fa5s.copy', color='#666666'))
+        copy_action.triggered.connect(lambda: self.copy_link_to_clipboard(item))
+        context_menu.addAction(copy_action)
+        
+        # Action untuk open link
+        open_action = QAction("Open Link", self)
+        open_action.setIcon(qta.icon('fa5s.external-link-alt', color='#4CAF50'))
+        open_action.triggered.connect(lambda: self.open_single_link(item))
+        context_menu.addAction(open_action)
+        
+        # Tampilkan menu di posisi kursor
+        context_menu.exec(self.links_table.mapToGlobal(position))
+    
+    def copy_link_to_clipboard(self, item):
+        """Copy link ke clipboard"""
+        try:
+            if not item:
+                return
+            
+            link = item.text()
+            if link:
+                # Get clipboard
+                clipboard = QApplication.clipboard()
+                clipboard.setText(link)
+                
+                # Show temporary status message
+                original_text = self.status_label.text()
+                self.status_label.setText(f"Link berhasil disalin ke clipboard: {link[:50]}...")
+                
+                # Reset status after 2 seconds
+                from PySide6.QtCore import QTimer
+                QTimer.singleShot(2000, lambda: self.status_label.setText(original_text))
+                
+        except Exception as e:
+            QMessageBox.warning(self, "Peringatan", f"Gagal copy link: {str(e)}")
+    
     def open_single_link(self, item):
         """Buka link individual saat double-click pada item tabel"""
         try:
@@ -720,32 +1046,10 @@ class LinkOpenerApp(QMainWindow):
             if link_index >= 0:
                 self.mark_link_processing(link_index)
             
-            # Setup Chrome driver kalau belum ada
-            if not self.chrome_driver:
+            # Validasi Chrome driver session atau buat baru jika perlu
+            if not self.is_chrome_driver_valid():
                 try:
-                    # Path ke chromedriver.exe di folder yang sama
-                    chromedriver_path = Path(__file__).parent / "chromedriver.exe"
-                    
-                    if not chromedriver_path.exists():
-                        QMessageBox.critical(self, "Error", "chromedriver.exe tidak ditemukan di folder aplikasi")
-                        return
-                    
-                    # Chrome options untuk incognito mode
-                    chrome_options = Options()
-                    chrome_options.add_argument("--incognito")
-                    chrome_options.add_argument("--disable-web-security")
-                    chrome_options.add_argument("--disable-features=VizDisplayCompositor")
-                    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-                    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-                    chrome_options.add_experimental_option('useAutomationExtension', False)
-                    
-                    # Setup service dan driver
-                    service = Service(str(chromedriver_path))
-                    self.chrome_driver = webdriver.Chrome(service=service, options=chrome_options)
-                    self.chrome_driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-                    
-                    print(f"DEBUG: Chrome driver created for single link: {link}")
-                    
+                    self.setup_chrome_driver_for_single_link()
                 except Exception as e:
                     QMessageBox.critical(self, "Error", f"Gagal setup Chrome driver: {str(e)}")
                     return
@@ -757,7 +1061,7 @@ class LinkOpenerApp(QMainWindow):
                     self.chrome_driver.get(link)
                     tab_handle = self.chrome_driver.current_window_handle
                 else:
-                    # Kalau udah ada tab, buka di tab baru
+                    # Kalau sudah ada tab, buka di tab baru
                     self.chrome_driver.execute_script(f"window.open('{link}');")
                     tab_handle = self.chrome_driver.window_handles[-1]
                   # Track tab yang baru dibuka
@@ -773,12 +1077,80 @@ class LinkOpenerApp(QMainWindow):
                 self.close_tabs_button.setEnabled(True)
                 
             except Exception as e:
-                QMessageBox.critical(self, "Error", f"Gagal buka link: {str(e)}")
-                print(f"DEBUG: Error opening single link {link}: {e}")
+                # Jika masih error, coba buat driver baru
+                print(f"DEBUG: Error with existing driver, creating new one: {e}")
+                try:
+                    self.setup_chrome_driver_for_single_link()
+                    self.chrome_driver.get(link)
+                    tab_handle = self.chrome_driver.current_window_handle
+                    self.opened_chrome_tabs.append(tab_handle)
+                    
+                    if link_index >= 0:
+                        self.mark_link_opened(link_index)
+                    
+                    self.status_label.setText(f"Link dibuka di Chrome: {link[:50]}...")
+                    self.close_tabs_button.setEnabled(True)
+                    
+                except Exception as e2:
+                    QMessageBox.critical(self, "Error", f"Gagal buka link: {str(e2)}")
+                    print(f"DEBUG: Error opening single link {link}: {e2}")
                 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Error saat buka link: {str(e)}")
             print(f"DEBUG: Error in open_single_link: {e}")
+    
+    def is_chrome_driver_valid(self):
+        """Cek apakah Chrome driver session masih valid"""
+        if not self.chrome_driver:
+            return False
+        
+        try:
+            # Coba akses session ID untuk test validitas
+            _ = self.chrome_driver.session_id
+            # Coba command sederhana untuk test koneksi
+            _ = self.chrome_driver.current_url
+            return True
+        except Exception as e:
+            print(f"DEBUG: Chrome driver session invalid: {e}")
+            # Cleanup driver yang tidak valid
+            try:
+                self.chrome_driver.quit()
+            except:
+                pass
+            self.chrome_driver = None
+            return False
+    
+    def setup_chrome_driver_for_single_link(self):
+        """Setup Chrome driver khusus untuk membuka link individual"""
+        try:
+            # Path ke chromedriver.exe di folder yang sama
+            chromedriver_path = Path(__file__).parent / "chromedriver.exe"
+            
+            if not chromedriver_path.exists():
+                raise Exception("chromedriver.exe tidak ditemukan di folder aplikasi")
+            
+            # Chrome options untuk incognito mode
+            chrome_options = Options()
+            chrome_options.add_argument("--incognito")
+            chrome_options.add_argument("--disable-web-security")
+            chrome_options.add_argument("--disable-features=VizDisplayCompositor")
+            chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+            chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            chrome_options.add_experimental_option('useAutomationExtension', False)
+            
+            # Setup service dan driver
+            service = Service(str(chromedriver_path))
+            self.chrome_driver = webdriver.Chrome(service=service, options=chrome_options)
+            self.chrome_driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            
+            # Reset daftar tab karena ini driver baru
+            self.opened_chrome_tabs = []
+            
+            print(f"DEBUG: New Chrome driver created for single link")
+            
+        except Exception as e:
+            print(f"DEBUG: Failed to setup Chrome driver for single link: {e}")
+            raise e
 
 def main():
     app = QApplication(sys.argv)
