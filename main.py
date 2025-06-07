@@ -47,6 +47,32 @@ except ImportError:
     olefile = None
     struct = None
 
+try:
+    import pandas as pd  # untuk .csv
+except ImportError:
+    pd = None
+
+try:
+    from odf.opendocument import load as odf_load  # untuk .odt, .ods, .odp
+    from odf.text import P as OdfP
+    from odf.table import Table as OdfTable, TableRow as OdfTableRow, TableCell as OdfTableCell
+    from odf.draw import Page as OdfPage, Frame as OdfFrame
+    from odf import teletype
+except ImportError:
+    odf_load = None
+    OdfP = None
+    OdfTable = None
+    OdfTableRow = None
+    OdfTableCell = None
+    OdfPage = None
+    OdfFrame = None
+    teletype = None
+
+try:
+    from striprtf.striprtf import rtf_to_text  # untuk .rtf
+except ImportError:
+    rtf_to_text = None
+
 
 class LinkOpenerWorker(QThread):
     """Worker thread untuk membuka link agar GUI tidak freeze"""
@@ -214,20 +240,17 @@ class LinkOpenerApp(QMainWindow):
         header_layout.addWidget(title)
         header_layout.addStretch()
         
-        layout.addLayout(header_layout)
-          # Deskripsi
+        layout.addLayout(header_layout)        # Deskripsi
         desc = QLabel("Pilih file yang berisi campuran teks dan link.\n"
-                     "Mendukung format: TXT, DOC, DOCX, XLS, XLSX, PPT, PPTX, PDF\n"
                      "Aplikasi akan menampilkan semua link yang ditemukan dalam tabel.\n"
-                     "Klik 'Buka Chrome' untuk membuka semua link, atau double-click link untuk buka satu per satu.\n"
-                     "Kamu juga bisa drag & drop file ke area ini.")
+                     "Klik 'Buka Chrome' untuk membuka semua link, atau double-click link untuk buka satu per satu.")
         desc.setAlignment(Qt.AlignCenter)
         desc.setWordWrap(True)
         layout.addWidget(desc)
         
         # Drag and Drop Area
         self.drop_frame = QFrame()
-        self.drop_frame.setMinimumHeight(80)
+        self.drop_frame.setMinimumHeight(100)
         self.drop_frame.setStyleSheet("""
             QFrame#dropFrame {
                 border: 2px dashed #aaaaaa;
@@ -236,10 +259,21 @@ class LinkOpenerApp(QMainWindow):
         """)
         self.drop_frame.setObjectName("dropFrame")
         drop_layout = QVBoxLayout(self.drop_frame)
+        
+        # Main drag & drop label
         drop_label = QLabel("Drag & Drop file di sini\natau klik tombol di bawah")
         drop_label.setAlignment(Qt.AlignCenter)
         drop_label.setFont(QFont("Arial", 10))
         drop_layout.addWidget(drop_label)
+        
+        # Supported formats label with smaller font
+        formats_label = QLabel("Mendukung format: TXT, DOC, DOCX, XLS, XLSX, PPT, PPTX, PDF, CSV, RTF, ODT, ODS, ODP")
+        formats_label.setAlignment(Qt.AlignCenter)
+        formats_label.setFont(QFont("Arial", 8))
+        formats_label.setStyleSheet("color: #666666; margin-top: 5px;")
+        formats_label.setWordWrap(True)
+        drop_layout.addWidget(formats_label)
+        
         layout.addWidget(self.drop_frame)
         
         # Layout horizontal untuk tombol-tombol di bawah DND
@@ -382,17 +416,17 @@ class LinkOpenerApp(QMainWindow):
         self.progress_bar.setMinimumHeight(25)
         self.progress_bar.setFormat("Sedang membuka link...")  # Custom text instead of percentage
         layout.addWidget(self.progress_bar)
-        
         layout.addStretch()
         
         self.found_links = []
+    
     def dragEnterEvent(self, event: QDragEnterEvent):
         """Handle drag enter event"""
         if event.mimeData().hasUrls():
             urls = event.mimeData().urls()
             if len(urls) == 1:
                 file_path = urls[0].toLocalFile().lower()
-                supported_extensions = ['.txt', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.pdf']
+                supported_extensions = ['.txt', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.pdf', '.csv', '.rtf', '.odt', '.ods', '.odp']
                 if any(file_path.endswith(ext) for ext in supported_extensions):
                     # Set hover style when dragging valid file - only border color change
                     self.drop_frame.setStyleSheet("""
@@ -418,7 +452,7 @@ class LinkOpenerApp(QMainWindow):
                 border-radius: 10px;
             }
         """)
-        event.accept()
+        event.accept()    
     def dropEvent(self, event: QDropEvent):
         """Handle drop event"""
         # Reset to normal style first
@@ -434,35 +468,36 @@ class LinkOpenerApp(QMainWindow):
             if len(urls) == 1:
                 file_path = urls[0].toLocalFile()
                 file_path_lower = file_path.lower()
-                supported_extensions = ['.txt', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.pdf']
+                supported_extensions = ['.txt', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.pdf', '.csv', '.rtf', '.odt', '.ods', '.odp']
                 if any(file_path_lower.endswith(ext) for ext in supported_extensions):
                     self.load_and_extract_links(file_path)
                     event.acceptProposedAction()                
                 else:
-                    QMessageBox.warning(self, "Peringatan", "Format file tidak didukung!\nHanya mendukung: TXT, DOC, DOCX, XLS, XLSX, PPT, PPTX, PDF")
+                    QMessageBox.warning(self, "Peringatan", "Format file tidak didukung!\nHanya mendukung: TXT, DOC, DOCX, XLS, XLSX, PPT, PPTX, PDF, CSV, RTF, ODT, ODS, ODP")
             else:
                 QMessageBox.warning(self, "Peringatan", "Hanya bisa drop satu file!")
         else:
             event.ignore()
-    
     def open_file(self):
         """Buka dialog untuk memilih file"""
         file_path, _ = QFileDialog.getOpenFileName(
             self, 
             "Pilih File", 
             "", 
-            "All Supported (*.txt *.doc *.docx *.xls *.xlsx *.ppt *.pptx *.pdf);;"
+            "All Supported (*.txt *.doc *.docx *.xls *.xlsx *.ppt *.pptx *.pdf *.csv *.rtf *.odt *.ods *.odp);;"
             "Text Files (*.txt);;"
             "Word Documents (*.doc *.docx);;"
             "Excel Files (*.xls *.xlsx);;"
             "PowerPoint Files (*.ppt *.pptx);;"
             "PDF Files (*.pdf);;"
+            "CSV Files (*.csv);;"
+            "RTF Files (*.rtf);;"
+            "OpenDocument Files (*.odt *.ods *.odp);;"
             "All Files (*)"
         )
         
         if file_path:
             self.load_and_extract_links(file_path)
-    
     def extract_text_from_file(self, file_path):
         """Ekstrak teks dari berbagai format file"""
         file_extension = Path(file_path).suffix.lower()
@@ -482,6 +517,16 @@ class LinkOpenerApp(QMainWindow):
                 return self.extract_text_from_ppt(file_path)
             elif file_extension == '.pdf':
                 return self.extract_text_from_pdf(file_path)
+            elif file_extension == '.csv':
+                return self.extract_text_from_csv(file_path)
+            elif file_extension == '.rtf':
+                return self.extract_text_from_rtf(file_path)
+            elif file_extension == '.odt':
+                return self.extract_text_from_odt(file_path)
+            elif file_extension == '.ods':
+                return self.extract_text_from_ods(file_path)
+            elif file_extension == '.odp':
+                return self.extract_text_from_odp(file_path)
             else:
                 raise Exception(f"Format file {file_extension} tidak didukung")
                 
@@ -656,6 +701,139 @@ class LinkOpenerApp(QMainWindow):
             raise Exception(f"Gagal membaca PDF: {str(e)}")
         
         return '\n'.join(text)
+    
+    def extract_text_from_ppt(self, file_path):
+        """Ekstrak teks dari file PPT (format lama)"""
+        if olefile is None:
+            raise Exception("Library olefile tidak terinstall. Install dengan: pip install olefile")
+        
+        # Untuk file .ppt, coba baca sebagai binary dan cari teks
+        try:
+            with open(file_path, 'rb') as file:
+                content = file.read()
+                # Decode dengan berbagai encoding
+                text = content.decode('utf-8', errors='ignore')
+                # Filter karakter yang tidak dapat dibaca
+                text = ''.join(char for char in text if ord(char) >= 32 or char in '\n\t')
+                return text
+        except Exception:
+            raise Exception("Gagal membaca file PPT. Coba convert ke PPTX dulu.")
+    
+    def extract_text_from_csv(self, file_path):
+        """Ekstrak teks dari file CSV"""
+        if pd is None:
+            raise Exception("Library pandas tidak terinstall. Install dengan: pip install pandas")
+        
+        text = []
+        try:
+            # Coba baca dengan encoding UTF-8 dulu
+            df = pd.read_csv(file_path, encoding='utf-8')
+        except UnicodeDecodeError:
+            try:
+                # Kalau gagal, coba dengan encoding latin-1
+                df = pd.read_csv(file_path, encoding='latin-1')
+            except:
+                # Terakhir coba dengan encoding cp1252 (Windows)
+                df = pd.read_csv(file_path, encoding='cp1252')
+        
+        # Ekstrak semua nilai dari DataFrame
+        for column in df.columns:
+            # Tambahkan nama kolom
+            text.append(str(column))
+            # Tambahkan nilai kolom (drop NaN values)
+            values = df[column].dropna().astype(str).tolist()
+            text.extend(values)
+        
+        return '\n'.join(text)
+    
+    def extract_text_from_rtf(self, file_path):
+        """Ekstrak teks dari file RTF"""
+        if rtf_to_text is None:
+            raise Exception("Library striprtf tidak terinstall. Install dengan: pip install striprtf")
+        
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
+                rtf_content = file.read()
+            
+            # Convert RTF ke plain text
+            plain_text = rtf_to_text(rtf_content)
+            return plain_text
+        except UnicodeDecodeError:
+            # Coba dengan encoding lain
+            try:
+                with open(file_path, 'r', encoding='latin-1') as file:
+                    rtf_content = file.read()
+                plain_text = rtf_to_text(rtf_content)
+                return plain_text
+            except:
+                raise Exception("Gagal membaca file RTF dengan encoding yang didukung")
+    
+    def extract_text_from_odt(self, file_path):
+        """Ekstrak teks dari file ODT (OpenDocument Text)"""
+        if odf_load is None or teletype is None:
+            raise Exception("Library odfpy tidak terinstall. Install dengan: pip install odfpy")
+        
+        try:
+            doc = odf_load(file_path)
+            text = []
+            
+            # Ekstrak semua paragraf teks
+            for paragraph in doc.getElementsByType(OdfP):
+                para_text = teletype.extractText(paragraph)
+                if para_text.strip():
+                    text.append(para_text)
+            
+            return '\n'.join(text)
+        except Exception as e:
+            raise Exception(f"Gagal membaca file ODT: {str(e)}")
+    
+    def extract_text_from_ods(self, file_path):
+        """Ekstrak teks dari file ODS (OpenDocument Spreadsheet)"""
+        if odf_load is None or teletype is None:
+            raise Exception("Library odfpy tidak terinstall. Install dengan: pip install odfpy")
+        
+        try:
+            doc = odf_load(file_path)
+            text = []
+            
+            # Ekstrak teks dari semua tabel
+            for table in doc.getElementsByType(OdfTable):
+                for row in table.getElementsByType(OdfTableRow):
+                    for cell in row.getElementsByType(OdfTableCell):
+                        cell_text = teletype.extractText(cell)
+                        if cell_text.strip():
+                            text.append(cell_text)
+            
+            return '\n'.join(text)
+        except Exception as e:
+            raise Exception(f"Gagal membaca file ODS: {str(e)}")
+    
+    def extract_text_from_odp(self, file_path):
+        """Ekstrak teks dari file ODP (OpenDocument Presentation)"""
+        if odf_load is None or teletype is None:
+            raise Exception("Library odfpy tidak terinstall. Install dengan: pip install odfpy")
+        
+        try:
+            doc = odf_load(file_path)
+            text = []
+            
+            # Ekstrak teks dari semua halaman presentasi
+            for page in doc.getElementsByType(OdfPage):
+                # Ekstrak teks dari frame di halaman
+                for frame in page.getElementsByType(OdfFrame):
+                    frame_text = teletype.extractText(frame)
+                    if frame_text.strip():
+                        text.append(frame_text)
+                
+                # Ekstrak paragraf langsung dari halaman
+                for paragraph in page.getElementsByType(OdfP):
+                    para_text = teletype.extractText(paragraph)
+                    if para_text.strip():
+                        text.append(para_text)
+            
+            return '\n'.join(text)
+        except Exception as e:
+            raise Exception(f"Gagal membaca file ODP: {str(e)}")
     
     def load_and_extract_links(self, file_path):
         """Load file dan ekstrak link dengan metode yang diperbaiki"""
