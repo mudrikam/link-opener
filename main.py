@@ -75,7 +75,7 @@ class LinkOpenerWorker(QThread):
             self.status_updated.emit(f"Error setup Chrome driver: {str(e)}")
             print(f"DEBUG: Worker - Driver setup error: {e}")
         
-        self.status_updated.emit("Udah selesai buka semua link!")
+        self.status_updated.emit("Selesai membuka semua link!")
         self.finished.emit()
     
     def setup_chrome_driver(self):
@@ -341,7 +341,7 @@ class LinkOpenerApp(QMainWindow):
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
         self.progress_bar.setMinimumHeight(25)
-        self.progress_bar.setFormat("Lagi buka link...")  # Custom text instead of percentage
+        self.progress_bar.setFormat("Sedang membuka link...")  # Custom text instead of percentage
         layout.addWidget(self.progress_bar)
         
         layout.addStretch()
@@ -393,9 +393,9 @@ class LinkOpenerApp(QMainWindow):
                     self.load_and_extract_links(file_path)
                     event.acceptProposedAction()                
                 else:
-                    QMessageBox.warning(self, "Peringatan", "Cuma file .txt yang didukung!")
+                    QMessageBox.warning(self, "Peringatan", "Hanya file .txt yang didukung!")
             else:
-                QMessageBox.warning(self, "Peringatan", "Cuma bisa drop satu file!")
+                QMessageBox.warning(self, "Peringatan", "Hanya bisa drop satu file!")
         else:
             event.ignore()
     
@@ -453,7 +453,7 @@ class LinkOpenerApp(QMainWindow):
                 self.close_tabs_button.setEnabled(False)
                 self.close_tabs_button.setEnabled(False)
             else:
-                self.status_label.setText(f"Ga ada link yang ditemukan dalam {file_name}.")                
+                self.status_label.setText(f"Tidak ada link yang ditemukan dalam {file_name}.")                
                 self.links_table.setVisible(False)
                 self.open_links_button.setVisible(False)
                 self.export_button.setVisible(False)
@@ -466,7 +466,7 @@ class LinkOpenerApp(QMainWindow):
         if self.is_processing:
             return            
         if not self.found_links:
-            QMessageBox.warning(self, "Peringatan", "Ga ada link buat dibuka!")
+            QMessageBox.warning(self, "Peringatan", "Tidak ada link untuk dibuka!")
             return
         
         # Set flag processing dan disable button
@@ -574,24 +574,24 @@ class LinkOpenerApp(QMainWindow):
             finally:
                 self.worker = None
           # Ubah status tanpa dialog konfirmasi
-        self.status_label.setText(f"Udah selesai buka {len(self.found_links)} link di Chrome incognito!")
+        self.status_label.setText(f"Selesai membuka {len(self.found_links)} link di Chrome incognito!")
         
         # Update informasi tentang tab yang dibuka dan enable tombol tutup tab
         if self.opened_chrome_tabs:
-            self.status_label.setText(f"Udah selesai buka {len(self.found_links)} link di Chrome incognito! "
+            self.status_label.setText(f"Selesai membuka {len(self.found_links)} link di Chrome incognito! "
                                     f"({len(self.opened_chrome_tabs)} tab Chrome dibuka)")
             self.close_tabs_button.setEnabled(True)  # Enable tombol tutup tab
         else:
-            self.close_tabs_button.setEnabled(False)  # Disable jika ga ada tab
+            self.close_tabs_button.setEnabled(False)  # Disable jika tidak ada tab
     
     def export_links(self):
         """Export link ke file _links.txt"""
         if not self.found_links:
-            QMessageBox.warning(self, "Peringatan", "Ga ada link buat diekspor!")
+            QMessageBox.warning(self, "Peringatan", "Tidak ada link untuk diekspor!")
             return
         
         if not self.source_file_path:
-            QMessageBox.warning(self, "Peringatan", "Path file sumber ga ditemukan!")
+            QMessageBox.warning(self, "Peringatan", "Path file sumber tidak ditemukan!")
             return
         
         # Buat nama file berdasarkan source file dengan suffix _links
@@ -603,7 +603,7 @@ class LinkOpenerApp(QMainWindow):
             reply = QMessageBox.question(
                 self,
                 "File Sudah Ada",
-                f"File {export_file_path.name} sudah ada.\nMau timpa file yang lama?",
+                f"File {export_file_path.name} sudah ada.\nIngin menimpa file yang lama?",
                 QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.No
             )
@@ -618,7 +618,7 @@ class LinkOpenerApp(QMainWindow):
             QMessageBox.information(
                 self, 
                 "Berhasil!", 
-                f"Udah berhasil ekspor {len(self.found_links)} link ke:\n{export_file_path}"
+                f"Berhasil mengekspor {len(self.found_links)} link ke:\n{export_file_path}"
             )
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Gagal ekspor file: {str(e)}")
@@ -628,11 +628,11 @@ class LinkOpenerApp(QMainWindow):
         print(f"DEBUG: close_chrome_tabs called. Current tracked tabs: {self.opened_chrome_tabs}")
         
         if not self.opened_chrome_tabs:
-            self.status_label.setText("Ga ada tab Chrome dari app ini yang perlu ditutup.")
+            self.status_label.setText("Tidak ada tab Chrome dari app ini yang perlu ditutup.")
             return
         
         if not self.chrome_driver:
-            self.status_label.setText("Chrome driver ga tersedia!")
+            self.status_label.setText("Chrome driver tidak tersedia!")
             return
         
         try:
@@ -671,10 +671,10 @@ class LinkOpenerApp(QMainWindow):
             
             # Update status label setelah tutup tabs
             if closed_count > 0:
-                self.status_label.setText(f"Udah tutup {closed_count} tab Chrome. Semua tab dari app ini udah ditutup.")
+                self.status_label.setText(f"Selesai menutup {closed_count} tab Chrome. Semua tab dari app ini sudah ditutup.")
             else:
-                self.status_label.setText("Semua tab Chrome dari app ini udah ditutup.")
-              # Disable tombol tutup tab karena udah ga ada tab yang terbuka
+                self.status_label.setText("Semua tab Chrome dari app ini sudah ditutup.")
+              # Disable tombol tutup tab karena sudah tidak ada tab yang terbuka
             self.close_tabs_button.setEnabled(False)
                 
         except Exception as e:
