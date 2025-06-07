@@ -1,0 +1,19 @@
+Ini adalah contoh file dengan campuran teks dan link.
+
+Beberapa link yang bisa dibuka:
+https://www.google.com
+https://www.youtube.com
+http://www.github.com
+
+Teks biasa di sini.
+Beberapa kata acak: hello world testing 123
+
+Link lainnya:
+https://stackoverflow.com/questions/12345
+https://docs.python.org/3/
+
+Teks penutup tanpa link.
+Email contoh: test@example.com (ini bukan link)
+Phone: +62-123-456-789
+
+Dan link terakhir: https://www.reddit.com/r/programming
